@@ -1,7 +1,7 @@
 {
   "name": "udping",
   "version": "1.0.0",
-  "description": "description goes here",
+  "description": "UDP and TCP echo server for student projects",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -15,5 +15,12 @@
   "bugs": {
     "url": "https://github.com/stebee/udping/issues"
   },
-  "homepage": "https://github.com/stebee/udping"
+  "homepage": "https://github.com/stebee/udping",
+  "dependencies": {
+    "express": "latest",
+    "moment": "latest",
+    "moment-timezone": "latest",
+    "redis" : "latest",
+    "bunyan" : "latest"
+  }
 }
