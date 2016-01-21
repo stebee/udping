@@ -1,0 +1,19 @@
+{
+  "name": "udping",
+  "version": "1.0.0",
+  "description": "description goes here",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stebee/udping.git"
+  },
+  "author": "Stephen Beeman <stephen.beeman@digipen.edu>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/stebee/udping/issues"
+  },
+  "homepage": "https://github.com/stebee/udping"
+}
