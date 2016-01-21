@@ -6,7 +6,7 @@ var redis = require('./redisSingleton')();
 module.exports.begin = function(port, onListen) {
     var app = express();
 
-    app.get('/', function (req, res) {
+    app.get('/packets', function (req, res) {
         var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
 
         redis.LRANGE(ip, 0, -1, function(err, rows) {
