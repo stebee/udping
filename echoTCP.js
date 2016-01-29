@@ -20,6 +20,17 @@ module.exports.begin = function(port, maxRows, onListen) {
     }
 
     var server = net.createServer({ allowHalfOpen: true }, function(sock) {
+
+        setTimeout(function() {
+            console.log('wtf connect timeout');
+            if (!ended)
+            {
+                console.log('wtf end');
+                sock.end();
+                errorSeen = new Error("Never closed the connection");
+            }
+        }, 50000);
+
         var ended = false;
         var errorSeen = null;
         var remoteAddress = sock.remoteAddress;
@@ -32,21 +43,10 @@ module.exports.begin = function(port, maxRows, onListen) {
         var fullResponse = '';
         var ascii = '';
 
-        sock.on('connect', function() {
-            setTimeout(function() {
-                if (!ended)
-                {
-                    rpush(remoteAddress, fullResponse + ' but never closed the connection');
-                }
-            }, 5000);
-        });
-
         sock.on('data', function(message) {
             ascii = message.toString().replace(/[\x00-\x1F]/g, "_");
             if (!ended)
             {
-                ended = true;
-
                 var good = false;
 
                 if (message)
@@ -63,11 +63,15 @@ module.exports.begin = function(port, maxRows, onListen) {
                     sock.write(response);
 
                     setTimeout(function() {
-                        response = ' of ' + message.length + ' bytes: "' + ascii + '" [' + hex + ']';
-                        fullResponse += response;
-                        sock.end(response);
-                        localFinSent = true;
-                    }, 1000);
+                        if (!ended)
+                        {
+                            console.log('local FIN');
+                            response = ' of ' + message.length + ' bytes: "' + ascii + '" [' + hex + ']';
+                            fullResponse += response;
+                            sock.end(response);
+                            localFinSent = true;
+                        }
+                    }, 3500);
                 }
                 else
                 {
@@ -78,6 +82,7 @@ module.exports.begin = function(port, maxRows, onListen) {
         });
 
         sock.on('end', function() {
+            console.log('remote FIN');
             remoteFinSent = true;
         });
 
@@ -90,23 +95,25 @@ module.exports.begin = function(port, maxRows, onListen) {
         });
 
         sock.on('close', function(had_error) {
-                if (had_error && !errorSeen)
+                console.log("wtf close");
+
+                if (!errorSeen)
                 {
-                    errorSeen = "Unknown error";
-                    log.warn({ body: ascii, ip: remoteAddress, port: remotePort, error: new Error(errorSeen) }, "Unspecified error");
-                }
-                else
-                {
-                    log.info({ body: ascii, ip: remoteAddress, port: remotePort, response: fullResponse }, "Success");
+                    if (!localFinSent)
+                        errorSeen = new Error("Did not read all the response");
+                    else if (had_error)
+                        errorSeen = new Error("Connection reset");
                 }
 
                 if (errorSeen)
                 {
-                    rpush(remoteAddress, fullResponse + ' but had error ' + errorSeen);
+                    log.warn({ body: ascii, ip: remoteAddress, port: remotePort, error: errorSeen }, "Unspecified error");
+                    rpush(remoteAddress, fullResponse + '; ' + errorSeen);
                 }
                 else
                 {
                     rpush(remoteAddress, fullResponse);
+                    log.info({ body: ascii, ip: remoteAddress, port: remotePort, response: fullResponse }, "Success");
                 }
                 ended = true;
             }
