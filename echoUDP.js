@@ -8,7 +8,7 @@ module.exports.begin = function(port, maxRows, onListen) {
 
     server.on('message', function (message, remote) {
         var good = false;
-        if (message && message.length < 100) {
+        if (message && message.length < 500) {
             good = message.toString().indexOf('\n') < 0;
         }
 
