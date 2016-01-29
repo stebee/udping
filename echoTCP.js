@@ -4,6 +4,13 @@ var redis = require('./redisSingleton')();
 var moment = require('moment-timezone');
 
 
+if (!String.prototype.startsWith) {
+    String.prototype.startsWith = function(searchString, position){
+        position = position || 0;
+        return this.substr(position, searchString.length) === searchString;
+    };
+}
+
 module.exports.begin = function(port, maxRows, onListen) {
     function rpush(address, payload) {
         redis.RPUSH(address, payload, function(err, length) {
@@ -16,6 +23,8 @@ module.exports.begin = function(port, maxRows, onListen) {
         var ended = false;
         var errorSeen = null;
         var remoteAddress = sock.remoteAddress;
+        if (remoteAddress.startsWith('::ffff:'))
+            remoteAddress = remoteAddress.substr('::ffff:'.length);
         var remotePort = sock.remotePort;
         var when = moment().tz('America/Los_Angeles').format('M/D/YY HH:mm');
         var localFinSent = false;
@@ -60,11 +69,10 @@ module.exports.begin = function(port, maxRows, onListen) {
                         localFinSent = true;
                     }, 1000);
                 }
-
-                if (!good)
-                    console.log((new Date()).toString() + " NAUGHTY TCP: " + message + " [" + sock.remoteAddress + ':' + sock.remotePort + "]");
-
-
+                else
+                {
+                    log.warn({ body: ascii, ip: remoteAddress, port: remotePort }, "Improper packet");
+                }
             }
 
         });
