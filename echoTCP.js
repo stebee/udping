@@ -1,58 +1,109 @@
 var net = require('net');
-var tcp = net.createServer({ allowHalfOpen: true }, function(sock) {
+var log = require('./logSingleton')();
+var redis = require('./redisSingleton')();
+var moment = require('moment-timezone');
 
-    var ended = false;
-    var remember_sender = "UNKNOWN";
-    var both_sent = false;
-    var fin_sent = false;
 
-    sock.on('data', function(data) {
-        if (!ended)
-        {
-            ended = true;
+module.exports.begin = function(port, maxRows, onListen) {
+    function rpush(address, payload) {
+        redis.RPUSH(address, payload, function(err, length) {
+            if (length > maxRows)
+                redis.LPOP(address);
+        });
+    }
 
-            var good = false;
+    var server = net.createServer({ allowHalfOpen: true }, function(sock) {
+        var ended = false;
+        var errorSeen = null;
+        var remoteAddress = sock.remoteAddress;
+        var remotePort = sock.remotePort;
+        var when = moment().tz('America/Los_Angeles').format('M/D/YY HH:mm');
+        var localFinSent = false;
+        var remoteFinSent = false;
+        var fullResponse = '';
+        var ascii = '';
 
-            if (data)
-                good = data.toString().indexOf('\n') < 0;
+        sock.on('connect', function() {
+            setTimeout(function() {
+                if (!ended)
+                {
+                    rpush(remoteAddress, fullResponse + ' but never closed the connection');
+                }
+            }, 5000);
+        });
 
-            if (good)
+        sock.on('data', function(message) {
+            ascii = message.toString().replace(/[\x00-\x1F]/g, "_");
+            if (!ended)
             {
-                remember_sender = "" + data;
+                ended = true;
 
-                var response = 'Welcome TCP sender from ' + sock.remoteAddress + ':' + sock.remotePort +' - ';
-                sock.write(response);
+                var good = false;
 
-                response = 'you sent ' + data.length + ' bytes: "' + data + '"';
-                setTimeout(function() {
-                    both_sent = true;
+                if (message)
+                    good = message.toString().indexOf('\n') < 0;
+
+                if (good)
+                {
+                    var hex = message.toString('hex');
+
+                    var response = 'At ' + when + ', ';
+                    response += 'TCP payload from ' + remoteAddress + ':' + remotePort;
+                    fullResponse = response;
+
                     sock.write(response);
 
-                    console.log((new Date()).toString() + " sent response to " + remember_sender);
-                    sock.end();
-                }, 450);
+                    setTimeout(function() {
+                        response = ' of ' + message.length + ' bytes: "' + ascii + '" [' + hex + ']';
+                        fullResponse += response;
+                        sock.end(response);
+                        localFinSent = true;
+                    }, 1000);
+                }
+
+                if (!good)
+                    console.log((new Date()).toString() + " NAUGHTY TCP: " + message + " [" + sock.remoteAddress + ':' + sock.remotePort + "]");
+
+
             }
 
-            if (!good)
-                console.log((new Date()).toString() + " NAUGHTY TCP: " + data + " [" + sock.remoteAddress + ':' + sock.remotePort + "]");
+        });
 
+        sock.on('end', function() {
+            remoteFinSent = true;
+        });
 
-        }
+        sock.on('error', function(error) {
+            if (err)
+            {
+                errorSeen = err;
+                log.warn({ body: ascii, ip: remoteAddress, port: remotePort, error: err }, "Socket error");
+            }
+        });
 
-    });
+        sock.on('close', function(had_error) {
+                if (had_error && !errorSeen)
+                {
+                    errorSeen = "Unknown error";
+                    log.warn({ body: ascii, ip: remoteAddress, port: remotePort, error: new Error(errorSeen) }, "Unspecified error");
+                }
+                else
+                {
+                    log.info({ body: ascii, ip: remoteAddress, port: remotePort, response: fullResponse }, "Success");
+                }
 
-    sock.on('end', function(error) {
-        console.log((new Date()).toString() + " " + remember_sender + " sent FIN");
-    });
+                if (errorSeen)
+                {
+                    rpush(remoteAddress, fullResponse + ' but had error ' + errorSeen);
+                }
+                else
+                {
+                    rpush(remoteAddress, fullResponse);
+                }
+                ended = true;
+            }
+        );
+    }).listen(port);
 
-    sock.on('error', function(error) {
-        console.log((new Date()).toString() + " " + remember_sender + " saw error " + error);
-    });
-    sock.on('close', function(error) {
-            console.log((new Date()).toString() + " " + remember_sender + " closed; error = " + error + "; fin sent = " + fin_sent + "; both sent = " + both_sent);
-        }
-    );
-
-
-
-}).listen(PORT);
+    process.nextTick(function() { onListen(); });
+}
