@@ -29,13 +29,15 @@ module.exports.begin = function(port, maxRows, onListen) {
         var when = moment().tz('America/Los_Angeles').format('M/D/YY HH:mm');
         var localFinSent = false;
         var remoteFinSent = false;
-        var fullResponse = '';
         var ascii = '';
+        var hex = '';
 
 
 
         var neverSawRemoteFin = false;
         var closedSocketAbnormally = false;
+        var sentDataTwice = false;
+        var sentDataNever = true;
 
         setTimeout(function() {
             if (!ended)
@@ -45,8 +47,9 @@ module.exports.begin = function(port, maxRows, onListen) {
             }
         }, 5000);
 
+        var fullResponse = 'At ' + when + ', TCP payload from ' + remoteAddress + ':' + remotePort;
+
         sock.on('data', function(message) {
-            ascii = message.toString().replace(/[\x00-\x1F]/g, "_");
             if (!ended)
             {
                 var good = false;
@@ -56,35 +59,38 @@ module.exports.begin = function(port, maxRows, onListen) {
 
                 if (good)
                 {
-                    var hex = message.toString('hex');
+                    if (sentDataNever)
+                    {
+                        sock.write(fullResponse);
+                        sentDataNever = false;
 
-                    var response = 'At ' + when + ', ';
-                    response += 'TCP payload from ' + remoteAddress + ':' + remotePort;
-                    fullResponse = response;
+                        ascii = message.toString().replace(/[\x00-\x1F]/g, "_");
+                        hex = message.toString('hex');
 
-                    sock.write(response);
+                        setTimeout(function() {
+                            if (!ended)
+                            {
+                                response = ' of ' + ascii.length + ' bytes: ';
+                                fullResponse += response;
+                                sock.write(response);
+                            }
+                        }, 750);
 
-                    setTimeout(function() {
-                        if (!ended)
-                        {
-                            response = ' of ' + message.length + ' bytes: ';
-                            fullResponse += response;
-                            sock.write(response);
-                        }
-                    }, 750);
+                        setTimeout(function() {
+                            if (!ended)
+                            {
+                                if (!remoteFinSent)
+                                    neverSawRemoteFin = true;
 
-                    setTimeout(function() {
-                        if (!ended)
-                        {
-                            if (!remoteFinSent)
-                                neverSawRemoteFin = true;
-
-                            response = '"' + ascii + '" [' + hex + ']';
-                            fullResponse += response;
-                            sock.end(response);
-                            localFinSent = true;
-                        }
-                    }, 1500);
+                                response = '"' + ascii + '" [' + hex + ']';
+                                fullResponse += response;
+                                sock.end(response);
+                                localFinSent = true;
+                            }
+                        }, 1500);
+                    }
+                    else
+                        sentDataTwice = true;
                 }
                 else
                 {
@@ -110,10 +116,14 @@ module.exports.begin = function(port, maxRows, onListen) {
                 if (!localFinSent)
                     closedSocketAbnormally = true;
 
-                if (closedSocketAbnormally)
+                if (sentDataNever)
+                    fullResponse += "... but client never sent data!";
+                else if (closedSocketAbnormally)
                     fullResponse += "... but socket was closed too early!";
                 else if (neverSawRemoteFin)
                     fullResponse += "... but socket wasn't shut down properly!";
+                else if (sentDataTwice)
+                    fullResponse += "... but client sent data more than once!";
 
                 rpush(remoteAddress, fullResponse);
                 log.info({ body: ascii, ip: remoteAddress, port: remotePort, response: fullResponse }, "Success");
