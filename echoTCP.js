@@ -20,17 +20,6 @@ module.exports.begin = function(port, maxRows, onListen) {
     }
 
     var server = net.createServer({ allowHalfOpen: true }, function(sock) {
-
-        setTimeout(function() {
-            console.log('wtf connect timeout');
-            if (!ended)
-            {
-                console.log('wtf end');
-                sock.end();
-                errorSeen = new Error("Never closed the connection");
-            }
-        }, 50000);
-
         var ended = false;
         var errorSeen = null;
         var remoteAddress = sock.remoteAddress;
@@ -42,6 +31,19 @@ module.exports.begin = function(port, maxRows, onListen) {
         var remoteFinSent = false;
         var fullResponse = '';
         var ascii = '';
+
+
+
+        var neverSawRemoteFin = false;
+        var closedSocketAbnormally = false;
+
+        setTimeout(function() {
+            if (!ended)
+            {
+                neverSawRemoteFin = true;
+                sock.end();
+            }
+        }, 5000);
 
         sock.on('data', function(message) {
             ascii = message.toString().replace(/[\x00-\x1F]/g, "_");
@@ -65,13 +67,24 @@ module.exports.begin = function(port, maxRows, onListen) {
                     setTimeout(function() {
                         if (!ended)
                         {
-                            console.log('local FIN');
-                            response = ' of ' + message.length + ' bytes: "' + ascii + '" [' + hex + ']';
+                            response = ' of ' + message.length + ' bytes: ';
+                            fullResponse += response;
+                            sock.write(response);
+                        }
+                    }, 750);
+
+                    setTimeout(function() {
+                        if (!ended)
+                        {
+                            if (!remoteFinSent)
+                                neverSawRemoteFin = true;
+
+                            response = '"' + ascii + '" [' + hex + ']';
                             fullResponse += response;
                             sock.end(response);
                             localFinSent = true;
                         }
-                    }, 3500);
+                    }, 1500);
                 }
                 else
                 {
@@ -82,39 +95,29 @@ module.exports.begin = function(port, maxRows, onListen) {
         });
 
         sock.on('end', function() {
-            console.log('remote FIN');
             remoteFinSent = true;
         });
 
         sock.on('error', function(error) {
-            if (err)
+            if (error)
             {
-                errorSeen = err;
-                log.warn({ body: ascii, ip: remoteAddress, port: remotePort, error: err }, "Socket error");
+                closedSocketAbnormally = true;
+                log.warn({ body: ascii, ip: remoteAddress, port: remotePort, error: error }, "Socket error");
             }
         });
 
         sock.on('close', function(had_error) {
-                console.log("wtf close");
+                if (!localFinSent)
+                    closedSocketAbnormally = true;
 
-                if (!errorSeen)
-                {
-                    if (!localFinSent)
-                        errorSeen = new Error("Did not read all the response");
-                    else if (had_error)
-                        errorSeen = new Error("Connection reset");
-                }
+                if (closedSocketAbnormally)
+                    fullResponse += "... but socket was closed too early!";
+                else if (neverSawRemoteFin)
+                    fullResponse += "... but socket wasn't shut down properly!";
 
-                if (errorSeen)
-                {
-                    log.warn({ body: ascii, ip: remoteAddress, port: remotePort, error: errorSeen }, "Unspecified error");
-                    rpush(remoteAddress, fullResponse + '; ' + errorSeen);
-                }
-                else
-                {
-                    rpush(remoteAddress, fullResponse);
-                    log.info({ body: ascii, ip: remoteAddress, port: remotePort, response: fullResponse }, "Success");
-                }
+                rpush(remoteAddress, fullResponse);
+                log.info({ body: ascii, ip: remoteAddress, port: remotePort, response: fullResponse }, "Success");
+
                 ended = true;
             }
         );

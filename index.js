@@ -15,7 +15,8 @@ tcp.begin(process.env.TCP_PORT, process.env.MAX_ROWS, function() {
     log.info('TCP server begun');
 });
 
-
+/*
 process.on('uncaughtException', function(err) {
     log.warn(err);
 });
+*/
