@@ -74,7 +74,7 @@ module.exports.begin = function(port, maxRows, onListen) {
                                 fullResponse += response;
                                 sock.write(response);
                             }
-                        }, 750);
+                        }, 725);
 
                         setTimeout(function() {
                             if (!ended)
@@ -87,7 +87,7 @@ module.exports.begin = function(port, maxRows, onListen) {
                                 sock.end(response);
                                 localFinSent = true;
                             }
-                        }, 1500);
+                        }, 1525);
                     }
                     else
                         sentDataTwice = true;
