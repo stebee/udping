@@ -57,7 +57,7 @@ module.exports.begin = function(port, maxRows, onListen) {
                 if (message)
                     good = message.toString().indexOf('\n') < 0;
 
-                if (good)
+                if (good && !sentDataTwice)
                 {
                     if (sentDataNever)
                     {
